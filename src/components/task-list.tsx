@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import type { Task } from "@/lib/task-schema";
 import { trpc } from "@/lib/trpc-client";
 import { errorMessage } from "@/lib/error-message";
@@ -28,6 +28,19 @@ export function TaskList({
   } | null>(null);
   const [refreshing, startTransition] = useTransition();
   const busy = deleting !== null || refreshing;
+
+  useEffect(() => {
+    if (!initialMessage) return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("success")) return;
+    url.searchParams.delete("success");
+    // Keep the feedback visible, but do not replay it on reload.
+    window.history.replaceState(
+      window.history.state,
+      "",
+      url.pathname + url.search + url.hash,
+    );
+  }, [initialMessage]);
 
   async function deleteTask(id: string) {
     setDeleting(id);

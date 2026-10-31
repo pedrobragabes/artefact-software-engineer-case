@@ -1,8 +1,8 @@
-# Requirements and validation plan
+# Requirements and validation
 
 The supplied two-page case is the requirements source. The corporate PDF is intentionally not redistributed.
 
-| Requirement                          | Planned implementation                                            | Acceptance evidence                                     |
+| Requirement                          | Implementation                                                    | Acceptance evidence                                     |
 | ------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------- |
 | Next.js v15 and React                | App Router, strict TypeScript; latest available stable 15.x patch | Dependency lockfile, typecheck and production build     |
 | Frontend consumes tRPC               | Typed HTTP client and App Router fetch adapter                    | Browser CRUD against production server                  |
@@ -17,8 +17,6 @@ The supplied two-page case is the requirements source. The corporate PDF is inte
 | Simple usable layout                 | Responsive CSS, labels, focus indicators                          | Mobile viewport and keyboard checks                     |
 | Documentation (bonus)                | README with setup, architecture and limitations                   | Follow documented commands                              |
 | Infinite scroll (bonus)              | Deliberately excluded                                             | No mandatory acceptance dependency                      |
-| Public GitHub delivery               | Prepared milestone and issues; publish only after authorization   | Pending explicit remote authorization                   |
-| Theoretical questions                | Learning outline for candidate-written answers                    | Candidate draft review; final PDF separately requested  |
 
 ## Resolved ambiguities
 

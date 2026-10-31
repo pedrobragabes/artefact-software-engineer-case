@@ -23,7 +23,6 @@ export default async function Home({
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">YOUR WORK, SIMPLIFIED</p>
           <h1>Your tasks</h1>
           <p className="intro">Keep track of what needs to get done.</p>
         </div>

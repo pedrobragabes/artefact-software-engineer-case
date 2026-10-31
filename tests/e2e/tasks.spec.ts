@@ -31,6 +31,12 @@ test("empty state and full create, edit, reload, delete flow", async ({
   await expect(
     page.getByRole("heading", { name: "Prepare demo" }),
   ).toBeVisible();
+  await expect(page).toHaveURL("http://127.0.0.1:3100/");
+  await page.reload();
+  await expect(page.getByRole("status")).toBeEmpty();
+  await expect(
+    page.getByRole("heading", { name: "Prepare demo" }),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Edit Prepare demo" }).click();
   await expect(page.getByLabel("Title (required)")).toHaveValue("Prepare demo");
   await page.getByLabel("Title (required)").fill("Demo ready");
@@ -41,12 +47,17 @@ test("empty state and full create, edit, reload, delete flow", async ({
   );
   await expect(page.getByRole("heading", { name: "Demo ready" })).toBeVisible();
   await expect(page.getByText("Review the sample tasks.")).toHaveCount(0);
+  await expect(page).toHaveURL("http://127.0.0.1:3100/");
   await page.reload();
+  await expect(page.getByRole("status")).toBeEmpty();
   await expect(page.getByRole("heading", { name: "Demo ready" })).toBeVisible();
   await page.getByRole("button", { name: "Delete Demo ready" }).click();
   await expect(page.getByRole("status")).toHaveText(
     "Task deleted successfully.",
   );
+  await expect(page.getByText("No tasks yet.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("status")).toBeEmpty();
   await expect(page.getByText("No tasks yet.")).toBeVisible();
   expect(errors).toEqual([]);
 });

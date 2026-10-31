@@ -29,7 +29,6 @@ export default function RootLayout({
         <main id="main" className="shell">
           {children}
         </main>
-        <footer className="shell">A little structure for your day.</footer>
       </body>
     </html>
   );
