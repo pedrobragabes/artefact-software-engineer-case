@@ -11,7 +11,7 @@ export default async function Home({
 }: {
   searchParams: Promise<{ success?: string }>;
 }) {
-  const tasks = await createCaller({ store: taskStore }).tasks.list();
+  const initialPage = await createCaller({ store: taskStore }).tasks.list();
   const { success } = await searchParams;
   const message =
     success === "created"
@@ -30,7 +30,7 @@ export default async function Home({
           New Task <span aria-hidden="true">+</span>
         </Link>
       </div>
-      <TaskList tasks={tasks} initialMessage={message} />
+      <TaskList initialPage={initialPage} initialMessage={message} />
     </>
   );
 }

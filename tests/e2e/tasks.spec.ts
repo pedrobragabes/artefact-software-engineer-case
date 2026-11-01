@@ -8,8 +8,12 @@ const api = createTRPCClient<AppRouter>({
 });
 
 test.beforeEach(async () => {
-  for (const task of await api.tasks.list.query())
-    await api.tasks.delete.mutate({ id: task.id });
+  let page = await api.tasks.list.query();
+  while (page.items.length) {
+    for (const task of page.items)
+      await api.tasks.delete.mutate({ id: task.id });
+    page = await api.tasks.list.query();
+  }
 });
 
 test("empty state and full create, edit, reload, delete flow", async ({
@@ -96,7 +100,7 @@ test("client validation rejects empty and whitespace titles", async ({
     "aria-invalid",
     "true",
   );
-  expect(await api.tasks.list.query()).toEqual([]);
+  expect((await api.tasks.list.query()).items).toEqual([]);
 });
 
 test("pending submission disables controls and failure preserves input for retry", async ({
@@ -236,4 +240,117 @@ test("HTTP rejects invalid input and does not expose stack traces", async () => 
     expect(error).toMatchObject({ data: { code: "NOT_FOUND" } });
     expect((error as { data: { stack?: string } }).data.stack).toBeUndefined();
   }
+});
+
+test("SSR delivers the first page and scrolling loads the remaining tasks once", async ({
+  page,
+  request,
+}) => {
+  for (let i = 0; i < 23; i++)
+    await api.tasks.create.mutate({ titulo: `Scroll task ${i}` });
+  const first = await api.tasks.list.query();
+  const html = (await (await request.get("/")).text()).replace(
+    /<script\b[^>]*>[\s\S]*?<\/script>/gi,
+    "",
+  );
+  for (const task of first.items) expect(html).toContain(task.titulo);
+  const second = await api.tasks.list.query({ cursor: first.nextCursor! });
+  expect(html).not.toContain(`<h2>${second.items[0].titulo}</h2>`);
+  await page.goto("/");
+  const cards = page
+    .getByRole("region", { name: "Task list" })
+    .getByRole("listitem");
+  await expect(cards).toHaveCount(10);
+  await page
+    .getByRole("button", { name: "Load More" })
+    .scrollIntoViewIfNeeded();
+  await expect(cards).toHaveCount(20);
+  await page
+    .getByRole("button", { name: "Load More" })
+    .scrollIntoViewIfNeeded();
+  await expect(cards).toHaveCount(23);
+  await expect(page.getByRole("button", { name: "Load More" })).toHaveCount(0);
+  expect(new Set(await cards.getByRole("heading").allTextContents()).size).toBe(
+    23,
+  );
+  const last = await cards.last().getByRole("heading").innerText();
+  await page.getByRole("link", { name: `Edit ${last}`, exact: true }).click();
+  await page.getByLabel("Title (required)").fill("Edited from a later page");
+  await page.getByRole("button", { name: "Save Changes" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Task updated successfully.",
+  );
+  for (let i = 0; i < 2; i++) {
+    await page
+      .getByRole("button", { name: "Load More" })
+      .scrollIntoViewIfNeeded();
+    await expect(cards).toHaveCount(i === 0 ? 20 : 23);
+  }
+  await expect(
+    page.getByRole("heading", { name: "Edited from a later page" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: "Delete Edited from a later page",
+      exact: true,
+    })
+    .click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Task deleted successfully.",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Edited from a later page" }),
+  ).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("status")).toBeEmpty();
+  expect((await api.tasks.list.query({ limit: 50 })).items).toHaveLength(22);
+});
+
+test("load-more errors pause automatic retries and allow a keyboard retry", async ({
+  page,
+}) => {
+  for (let i = 0; i < 12; i++)
+    await api.tasks.create.mutate({ titulo: `Retry page ${i}` });
+  await page.goto("/");
+  let calls = 0;
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/trpc/tasks.list*", async (route) => {
+    calls++;
+    await pending;
+    await route.abort();
+  });
+  await page
+    .getByRole("button", { name: "Load More" })
+    .scrollIntoViewIfNeeded();
+  await expect(page.getByRole("button", { name: "Loading…" })).toBeDisabled();
+  release();
+  await expect(
+    page.getByText("Could not load more tasks. Please try again."),
+  ).toBeVisible();
+  await expect(page.getByRole("listitem")).toHaveCount(10);
+  expect(calls).toBe(1);
+  await page.unroute("**/api/trpc/tasks.list*");
+  await page.getByRole("button", { name: "Try again", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("listitem")).toHaveCount(12);
+  await expect(
+    page.getByText("Could not load more tasks. Please try again."),
+  ).toHaveCount(0);
+});
+
+test("manual load-more works without IntersectionObserver", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Reflect.deleteProperty(window, "IntersectionObserver");
+  });
+  for (let i = 0; i < 11; i++)
+    await api.tasks.create.mutate({ titulo: `Manual task ${i}` });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load More" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("listitem")).toHaveCount(11);
 });

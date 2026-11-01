@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
-import type { Task } from "@/lib/task-schema";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import type { TaskPage } from "@/lib/task-schema";
 import { trpc } from "@/lib/trpc-client";
 import { errorMessage } from "@/lib/error-message";
 
@@ -14,13 +14,19 @@ const dateFormatter = new Intl.DateTimeFormat("en", {
 });
 
 export function TaskList({
-  tasks,
+  initialPage,
   initialMessage,
 }: {
-  tasks: Task[];
+  initialPage: TaskPage;
   initialMessage: string;
 }) {
   const router = useRouter();
+  const [page, setPage] = useState(initialPage);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const loadButton = useRef<HTMLButtonElement>(null);
+  const request = useRef<AbortController | null>(null);
+  const tasks = page.items;
   const [deleting, setDeleting] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     message: string;
@@ -30,17 +36,70 @@ export function TaskList({
   const busy = deleting !== null || refreshing;
 
   useEffect(() => {
+    request.current?.abort();
+    request.current = null;
+    setPage(initialPage);
+    setLoadError("");
+    setLoadingMore(false);
+    return () => {
+      request.current?.abort();
+    };
+  }, [initialPage]);
+
+  const loadMore = useCallback(async () => {
+    if (!page.nextCursor || request.current || busy) return;
+    const controller = new AbortController();
+    request.current = controller;
+    setLoadingMore(true);
+    setLoadError("");
+    try {
+      const next = await trpc.tasks.list.query(
+        { cursor: page.nextCursor },
+        { signal: controller.signal },
+      );
+      if (!controller.signal.aborted) {
+        setPage((previous) => ({
+          items: [...previous.items, ...next.items],
+          nextCursor: next.nextCursor,
+        }));
+      }
+    } catch {
+      if (!controller.signal.aborted)
+        setLoadError("Could not load more tasks. Please try again.");
+    } finally {
+      if (!controller.signal.aborted) {
+        request.current = null;
+        setLoadingMore(false);
+      }
+    }
+  }, [page.nextCursor, busy]);
+
+  useEffect(() => {
+    if (
+      !loadButton.current ||
+      loadingMore ||
+      loadError ||
+      busy ||
+      !page.nextCursor
+    )
+      return;
+    if (!("IntersectionObserver" in window)) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) void loadMore();
+    });
+    observer.observe(loadButton.current);
+    return () => observer.disconnect();
+  }, [loadMore, loadingMore, loadError, busy, page.nextCursor]);
+
+  useEffect(() => {
     if (!initialMessage) return;
     const url = new URL(window.location.href);
     if (!url.searchParams.has("success")) return;
     url.searchParams.delete("success");
-    // Keep the feedback visible, but do not replay it on reload.
-    window.history.replaceState(
-      window.history.state,
-      "",
-      url.pathname + url.search + url.hash,
-    );
-  }, [initialMessage]);
+    // Keep feedback in this visit while consuming the URL parameter.
+    setFeedback({ message: initialMessage, error: false });
+    router.replace(url.pathname + url.search + url.hash, { scroll: false });
+  }, [initialMessage, router]);
 
   async function deleteTask(id: string) {
     setDeleting(id);
@@ -76,8 +135,8 @@ export function TaskList({
           <span className="empty-icon" aria-hidden="true">
             ✓
           </span>
-          <h2>A clear starting point</h2>
-          <p>No tasks yet. Add your first task to get started.</p>
+          <h2>No tasks yet</h2>
+          <p>No tasks yet. Create one to get started.</p>
           <Link className="text-link" href="/tasks/new">
             Create your first task <span aria-hidden="true">→</span>
           </Link>
@@ -108,7 +167,7 @@ export function TaskList({
                 </Link>
                 <button
                   className="button danger"
-                  disabled={busy}
+                  disabled={busy || loadingMore}
                   onClick={() => deleteTask(task.id)}
                   aria-label={`Delete ${task.titulo}`}
                 >
@@ -118,6 +177,28 @@ export function TaskList({
             </li>
           ))}
         </ul>
+      )}
+      {page.nextCursor && (
+        <div className="load-more">
+          {loadError && (
+            <p role="alert" className="field-error">
+              {loadError}
+            </p>
+          )}
+          <button
+            ref={loadButton}
+            className="button secondary"
+            disabled={busy || loadingMore}
+            onClick={loadMore}
+          >
+            {loadingMore ? "Loading…" : loadError ? "Try again" : "Load More"}
+          </button>
+          <p className="sr-only" aria-live="polite">
+            {loadingMore
+              ? "Loading more tasks…"
+              : `${tasks.length} tasks loaded.`}
+          </p>
+        </div>
       )}
     </section>
   );

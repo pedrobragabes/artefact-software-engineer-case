@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { TaskForm } from "@/components/task-form";
@@ -15,9 +16,12 @@ export default async function EditTaskPage({
 }) {
   const input = taskIdSchema.safeParse(await params);
   if (!input.success) notFound();
-  const tasks = await createCaller({ store: taskStore }).tasks.list();
-  const task = tasks.find((item) => item.id === input.data.id);
-  if (!task) notFound();
+  const task = await createCaller({ store: taskStore })
+    .tasks.get(input.data)
+    .catch((error: unknown) => {
+      if (error instanceof TRPCError && error.code === "NOT_FOUND") notFound();
+      throw error;
+    });
   return (
     <div className="form-page">
       <Link className="back-link" href="/">
@@ -25,7 +29,7 @@ export default async function EditTaskPage({
       </Link>
       <div className="form-heading">
         <h1>Edit task</h1>
-        <p className="intro">Update the details and keep moving.</p>
+        <p className="intro">Change the title or description.</p>
       </div>
       <TaskForm task={task} />
     </div>

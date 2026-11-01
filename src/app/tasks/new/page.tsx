@@ -9,7 +9,7 @@ export default function NewTaskPage() {
       </Link>
       <div className="form-heading">
         <h1>New task</h1>
-        <p className="intro">Make room for your next step.</p>
+        <p className="intro">Add a title and any details you need.</p>
       </div>
       <TaskForm />
     </div>

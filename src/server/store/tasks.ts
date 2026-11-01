@@ -1,5 +1,15 @@
 import { randomUUID } from "node:crypto";
-import type { Task, TaskFields } from "../../lib/task-schema";
+import type {
+  Task,
+  TaskFields,
+  ListTasksInput,
+  TaskCursor,
+  TaskPage,
+} from "../../lib/task-schema";
+
+function compareTasks(a: TaskCursor, b: TaskCursor) {
+  return b.dataCriacao.localeCompare(a.dataCriacao) || a.id.localeCompare(b.id);
+}
 
 export function createTaskStore() {
   const tasks = new Map<string, Task>();
@@ -14,12 +24,24 @@ export function createTaskStore() {
       tasks.set(task.id, task);
       return { ...task };
     },
-    list(): Task[] {
-      return Array.from(tasks.values(), (task) => ({ ...task })).sort(
-        (a, b) =>
-          b.dataCriacao.localeCompare(a.dataCriacao) ||
-          a.id.localeCompare(b.id),
-      );
+    get(id: string): Task | undefined {
+      const task = tasks.get(id);
+      return task ? { ...task } : undefined;
+    },
+    list({ limit = 10, cursor }: ListTasksInput = { limit: 10 }): TaskPage {
+      const remaining = Array.from(tasks.values())
+        .sort(compareTasks)
+        .filter((task) => !cursor || compareTasks(task, cursor) > 0);
+      const items = remaining.slice(0, limit).map((task) => ({ ...task }));
+      const last = items.at(-1);
+      return {
+        items,
+        // A value cursor still works if the last task on a page is deleted.
+        nextCursor:
+          remaining.length > limit && last
+            ? { id: last.id, dataCriacao: last.dataCriacao }
+            : null,
+      };
     },
     update(id: string, fields: TaskFields): Task | undefined {
       const previous = tasks.get(id);

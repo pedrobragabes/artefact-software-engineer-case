@@ -10,7 +10,7 @@ function setup() {
 
 test("create trims fields, generates unique IDs and valid server timestamps; list is deterministic", async () => {
   const tasks = setup();
-  assert.deepEqual(await tasks.list(), []);
+  assert.deepEqual((await tasks.list()).items, []);
   const before = Date.now();
   const first = await tasks.create({
     titulo: "  Draft proposal  ",
@@ -30,7 +30,7 @@ test("create trims fields, generates unique IDs and valid server timestamps; lis
     (a, b) =>
       b.dataCriacao.localeCompare(a.dataCriacao) || a.id.localeCompare(b.id),
   );
-  assert.deepEqual(await tasks.list(), expected);
+  assert.deepEqual((await tasks.list()).items, expected);
 });
 
 test("rejects empty, whitespace, missing, oversized and non-string titles", async () => {
@@ -45,7 +45,7 @@ test("rejects empty, whitespace, missing, oversized and non-string titles", asyn
   ]) {
     await assert.rejects(tasks.create(input as never), { code: "BAD_REQUEST" });
   }
-  assert.deepEqual(await tasks.list(), []);
+  assert.deepEqual((await tasks.list()).items, []);
 });
 
 test("rejects client-supplied IDs and creation dates", async () => {
@@ -72,7 +72,7 @@ test("update preserves ID/date, can clear description, rejects invalid edits wit
     tasks.update({ id: task.id, titulo: "Bad", dataCriacao: "2000" } as never),
     { code: "BAD_REQUEST" },
   );
-  assert.deepEqual(await tasks.list(), [updated]);
+  assert.deepEqual((await tasks.list()).items, [updated]);
 });
 
 test("missing and malformed IDs produce NOT_FOUND and BAD_REQUEST", async () => {
@@ -96,7 +96,7 @@ test("delete confirms the removed ID and rejects repeated deletion", async () =>
     id: task.id,
     deleted: true,
   });
-  assert.deepEqual(await tasks.list(), []);
+  assert.deepEqual((await tasks.list()).items, []);
   await assert.rejects(tasks.delete({ id: task.id }), { code: "NOT_FOUND" });
 });
 
@@ -104,7 +104,70 @@ test("store outputs cannot mutate internal data and stores are isolated", () => 
   const store = createTaskStore();
   const created = store.create({ titulo: "Original" });
   created.titulo = "Changed outside";
-  store.list()[0].titulo = "Changed list";
-  assert.equal(store.list()[0].titulo, "Original");
-  assert.deepEqual(createTaskStore().list(), []);
+  store.list().items[0].titulo = "Changed list";
+  assert.equal(store.list().items[0].titulo, "Original");
+  assert.deepEqual(createTaskStore().list().items, []);
+});
+
+test("cursor pages preserve order across timestamp ties and a deleted boundary", async (context) => {
+  context.mock.timers.enable({
+    apis: ["Date"],
+    now: new Date("2026-01-01T12:00:00.000Z"),
+  });
+  const tasks = setup();
+  const created = [];
+  for (let i = 0; i < 23; i++)
+    created.push(await tasks.create({ titulo: `Task ${i}` }));
+  const expected = created.sort((a, b) => a.id.localeCompare(b.id));
+  const first = await tasks.list();
+  assert.equal(first.items.length, 10);
+  assert.deepEqual(first.items, expected.slice(0, 10));
+  assert.ok(first.nextCursor);
+  await tasks.delete({ id: first.nextCursor.id });
+  context.mock.timers.tick(1000);
+  await tasks.create({ titulo: "Newer task" });
+  const second = await tasks.list({ cursor: first.nextCursor });
+  assert.deepEqual(second.items, expected.slice(10, 20));
+  assert.ok(second.nextCursor);
+  const third = await tasks.list({ cursor: second.nextCursor });
+  assert.deepEqual(third.items, expected.slice(20));
+  assert.equal(third.nextCursor, null);
+  const allIDs = [...first.items, ...second.items, ...third.items].map(
+    (task) => task.id,
+  );
+  assert.equal(new Set(allIDs).size, 23);
+});
+
+test("pagination validates bounds and cursors and ends on an exact page", async () => {
+  const tasks = setup();
+  for (const input of [
+    { limit: 0 },
+    { limit: 51 },
+    { limit: 1.5 },
+    { limit: "10" },
+    { cursor: { id: "invalid", dataCriacao: "today" } },
+    { cursor: { id: randomUUID(), dataCriacao: "invalid" } },
+  ]) {
+    await assert.rejects(tasks.list(input as never), { code: "BAD_REQUEST" });
+  }
+  for (let i = 0; i < 10; i++) await tasks.create({ titulo: `Task ${i}` });
+  const page = await tasks.list();
+  assert.equal(page.items.length, 10);
+  assert.equal(page.nextCursor, null);
+  assert.equal((await tasks.list({ limit: 3 })).items.length, 3);
+});
+
+test("get reads a task beyond the first page and handles invalid or missing IDs", async () => {
+  const tasks = setup();
+  const created = [];
+  for (let i = 0; i < 12; i++)
+    created.push(await tasks.create({ titulo: `Task ${i}` }));
+  const first = await tasks.list();
+  const outside = created.find(
+    (task) => !first.items.some((item) => item.id === task.id),
+  )!;
+  assert.deepEqual(await tasks.get({ id: outside.id }), outside);
+  await assert.rejects(tasks.get({ id: "invalid" }), { code: "BAD_REQUEST" });
+  await tasks.delete({ id: outside.id });
+  await assert.rejects(tasks.get({ id: outside.id }), { code: "NOT_FOUND" });
 });

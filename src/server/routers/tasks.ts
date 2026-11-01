@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import {
   taskFieldsSchema,
+  listTasksSchema,
   taskIdSchema,
   updateTaskSchema,
 } from "../../lib/task-schema";
@@ -10,7 +11,18 @@ export const tasksRouter = t.router({
   create: t.procedure
     .input(taskFieldsSchema)
     .mutation(({ ctx, input }) => ctx.store.create(input)),
-  list: t.procedure.query(({ ctx }) => ctx.store.list()),
+  list: t.procedure
+    .input(listTasksSchema)
+    .query(({ ctx, input }) => ctx.store.list(input)),
+  get: t.procedure.input(taskIdSchema).query(({ ctx, input }) => {
+    const task = ctx.store.get(input.id);
+    if (!task)
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Task not found. It may have been deleted.",
+      });
+    return task;
+  }),
   update: t.procedure.input(updateTaskSchema).mutation(({ ctx, input }) => {
     const task = ctx.store.update(input.id, input);
     if (!task)

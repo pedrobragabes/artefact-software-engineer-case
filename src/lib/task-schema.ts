@@ -24,3 +24,21 @@ export const updateTaskSchema = taskFieldsSchema.extend({
 
 export type TaskFields = z.infer<typeof taskFieldsSchema>;
 export type Task = TaskFields & { id: string; dataCriacao: string };
+
+export const listTasksSchema = z
+  .object({
+    limit: z.number().int().min(1).max(50).default(10),
+    cursor: z
+      .object({
+        id: z.uuid(),
+        dataCriacao: z.iso.datetime(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .prefault({});
+
+export type ListTasksInput = z.infer<typeof listTasksSchema>;
+export type TaskCursor = NonNullable<ListTasksInput["cursor"]>;
+export type TaskPage = { items: Task[]; nextCursor: TaskCursor | null };

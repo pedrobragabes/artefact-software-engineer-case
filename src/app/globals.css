@@ -327,3 +327,10 @@ textarea {
     padding-block: 44px;
   }
 }
+
+.load-more {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding-block: 24px;
+}
