@@ -26,3 +26,19 @@ The infinite-scroll bonus is verified with 23 tasks across three pages, with no 
 Final visual review on November 1, 2026: production preview loaded ten tasks initially and thirteen after scrolling. Desktop and 375px mobile layouts were inspected. The production dependency audit still reported no vulnerabilities.
 
 The final requirement-by-requirement audit is in [final-audit.md](final-audit.md), including independently tested process isolation/restart loss and GitHub history/metadata caveats.
+
+## Dependency audit and compatibility
+
+At the November 1 audit, `npm audit --omit=dev` reported zero vulnerabilities. The full audit reported 14 moderate findings in the development lint chain, involving minimatch and affected dependants. The compatible ESLint 9 line is unsupported upstream. These results are dated evidence, not a guarantee about future advisories.
+
+Next.js 15 pins an older transitive PostCSS version. The override to 8.5.32 addresses reported advisories while keeping the required Next.js major. Production build and browser tests passed with this override. No forced major upgrades were applied.
+
+## Pagination details
+
+`nextCursor` contains the last task's `{ id, dataCriacao }`, or is `null` at the end. This value cursor remains usable if that task is deleted, unlike an array offset that can shift. Tasks added before the cursor appear after a refresh. Pagination bounds response size; the small in-memory store still sorts its contents on each read.
+
+## Server binding and test cleanup
+
+Both npm server scripts explicitly pass `--hostname 127.0.0.1`. This statement applies to the supplied scripts, not Next.js defaults or commands launched with different options.
+
+`playwright.config.ts` starts a dedicated production server on port 3100 with `reuseExistingServer: false`. The `beforeEach` hook in `tests/e2e/tasks.spec.ts` calls `tasks.list` and `tasks.delete` until the test server is empty. The application exposes no test-only reset endpoint; `reset` in the error boundary is Next.js page retry behavior.

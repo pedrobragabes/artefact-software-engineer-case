@@ -28,7 +28,7 @@ npm run build
 npm start
 ```
 
-Both servers bind to loopback. Run a single Node.js process and use fictional data. Stopping the server loses all tasks.
+The `dev` and `start` scripts explicitly bind to `127.0.0.1` with `--hostname`. Run a single Node.js process and use fictional data. Stopping the server loses all tasks.
 
 ## Architecture
 
@@ -60,7 +60,7 @@ Endpoint: `/api/trpc`. Field names follow the case specification.
 
 A task has `id`, `titulo`, optional `descricao`, and `dataCriacao`. The server generates UUIDs and UTC ISO timestamps; editing preserves both. Tasks sort by creation time descending, then UUID ascending for ties. Dates display in UTC.
 
-List defaults to ten tasks and accepts limits from 1 to 50. `nextCursor` contains the last task's `{ id, dataCriacao }`, or is `null` at the end. Using these immutable values instead of an array offset means deleting a previous task does not skip entries on the next page. Newer tasks added in another tab appear after a refresh. Pagination reduces response size; the small in-memory store still sorts its contents for each read.
+Cursor-based pagination loads tasks incrementally using a stable ordering based on creation time and ID. Pages default to ten tasks; limits from 1 to 50 are accepted.
 
 Titles are trimmed, required, and limited to 200 characters. Descriptions are trimmed and limited to 5,000 characters. Update replaces the editable fields; omitting the description clears it. Unknown fields and invalid IDs are rejected. Invalid input returns `BAD_REQUEST`; absent tasks return `NOT_FOUND`.
 
@@ -77,7 +77,7 @@ npm run build
 npm run test:e2e
 ```
 
-The browser suite starts its own production server on port 3100 and clears that server's tasks between tests. Keep the port free. It never reuses a running server.
+The browser suite starts its own production server on port 3100. Between tests, it lists and deletes tasks through the normal tRPC procedures; there is no reset endpoint. Keep the port free: the suite refuses to reuse a running server.
 
 Backend tests cover CRUD, validation, server-generated fields, ordering, missing IDs, and store isolation. Browser tests cover CRUD, consumed success feedback, data after reload, SSR in raw HTML and without JavaScript, pending/error states, retries, stale tasks, mobile layout, keyboard navigation, incremental loading, and retry after a page-fetch error. See the [final audit](docs/final-audit.md) for the requirement-by-requirement evidence and remaining caveats, [verification](docs/verification.md), and the [requirements matrix](docs/requirements.md).
 
@@ -93,19 +93,16 @@ Backend tests cover CRUD, validation, server-generated fields, ordering, missing
 
 ## Lessons Learned
 
-These observations came from implementing and testing this application:
-
-- A Server Component alone is not proof of SSR. The tests check the response HTML and load the page with JavaScript disabled.
-- Cleaning a success parameter with browser history alone could leave Next.js navigation out of sync in an edit/delete flow. Keeping feedback in local state and using `router.replace` passed the reload regression test.
-- A process-wide singleton can share tasks between page and API bundles, but it cannot make them durable. Separate-process and restart checks confirmed those limits.
+- Keeping the list consistent after a mutation required a clear split: the server provides the first page, and the client handles interactions and requests fresh data.
+- A small feedback message exposed a navigation issue. Updating browser history alone was not enough; consuming the success parameter through Next.js kept the URL and page in sync.
+- Sharing data in memory is different from persisting it. The singleton connects the page and API within one process, but a restart still clears every task.
 
 ## Known limitations
 
 - Data is volatile and not shared between processes or serverless instances. A singleton is not persistence; runtime replacement can reset it.
 - There is no authentication, authorization, storage quota, conflict detection, or live synchronization across tabs. Concurrent edits use the last successful write.
 - Only Chromium and the stated Node.js version were tested. Basic accessibility checks are not a full audit.
-- Next.js 15 requires a compatible lint toolchain. The full npm audit has outstanding moderate development-tooling findings; production dependencies audit clean at verification time.
-- The PostCSS override to 8.5.32 addresses transitive advisories while retaining Next.js 15.
+- Dependency audit findings and the compatibility override are documented in [verification](docs/verification.md#dependency-audit-and-compatibility).
 
 A production service would need durable storage, access controls, and broader operational testing. Those changes are outside this case.
 
