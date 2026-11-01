@@ -79,15 +79,38 @@ npm run test:e2e
 
 The browser suite starts its own production server on port 3100 and clears that server's tasks between tests. Keep the port free. It never reuses a running server.
 
-Backend tests cover CRUD, validation, server-generated fields, ordering, missing IDs, and store isolation. Browser tests cover CRUD, consumed success feedback, data after reload, SSR in raw HTML and without JavaScript, pending/error states, retries, stale tasks, mobile layout, keyboard navigation, incremental loading, and retry after a page-fetch error. See [verification](docs/verification.md) and the [requirements matrix](docs/requirements.md).
+Backend tests cover CRUD, validation, server-generated fields, ordering, missing IDs, and store isolation. Browser tests cover CRUD, consumed success feedback, data after reload, SSR in raw HTML and without JavaScript, pending/error states, retries, stale tasks, mobile layout, keyboard navigation, incremental loading, and retry after a page-fetch error. See the [final audit](docs/final-audit.md) for the requirement-by-requirement evidence and remaining caveats, [verification](docs/verification.md), and the [requirements matrix](docs/requirements.md).
 
-## Decisions and limitations
+## Engineering Decisions & Trade-offs
 
-- One application and plain CSS keep the implementation small. Infinite scroll uses browser APIs and the existing tRPC client, with no additional library.
+| Decision                   | Reason                                                                   | Trade-off                                                                               |
+| -------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| In-memory storage          | Meets the case requirement with a small, testable store                  | Tasks are lost on restart and are not shared between processes                          |
+| tRPC with Zod              | Shares TypeScript types while validating untrusted input at runtime      | Couples client and server to the TypeScript ecosystem                                   |
+| Dynamic SSR                | Includes the first task page in the initial HTML                         | Mutations must refresh server data; later pages need client state                       |
+| Cursor pagination          | Loads more tasks without skipping entries when earlier tasks are deleted | Requires a stable date/ID ordering; the in-memory list is still sorted for each request |
+| Plain CSS and browser APIs | Keeps the UI and infinite scroll small without another library           | Loading, errors, and accessibility need explicit handling                               |
+
+## Lessons Learned
+
+These observations came from implementing and testing this application:
+
+- A Server Component alone is not proof of SSR. The tests check the response HTML and load the page with JavaScript disabled.
+- Cleaning a success parameter with browser history alone could leave Next.js navigation out of sync in an edit/delete flow. Keeping feedback in local state and using `router.replace` passed the reload regression test.
+- A process-wide singleton can share tasks between page and API bundles, but it cannot make them durable. Separate-process and restart checks confirmed those limits.
+
+## Known limitations
+
 - Data is volatile and not shared between processes or serverless instances. A singleton is not persistence; runtime replacement can reset it.
 - There is no authentication, authorization, storage quota, conflict detection, or live synchronization across tabs. Concurrent edits use the last successful write.
 - Only Chromium and the stated Node.js version were tested. Basic accessibility checks are not a full audit.
 - Next.js 15 requires a compatible lint toolchain. The full npm audit has outstanding moderate development-tooling findings; production dependencies audit clean at verification time.
-- The PostCSS override to 8.5.32 addresses transitive advisories while retaining Next.js 15. No application dependency was added for this review.
+- The PostCSS override to 8.5.32 addresses transitive advisories while retaining Next.js 15.
 
 A production service would need durable storage, access controls, and broader operational testing. Those changes are outside this case.
+
+## Screenshot
+
+![Task Manager showing two fictional tasks](docs/images/task-manager.png)
+
+Captured from the local production build with fictional sample tasks.

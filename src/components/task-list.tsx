@@ -135,8 +135,8 @@ export function TaskList({
           <span className="empty-icon" aria-hidden="true">
             ✓
           </span>
-          <h2>No tasks yet</h2>
-          <p>No tasks yet. Create one to get started.</p>
+          <h2>No tasks yet.</h2>
+          <p>Create your first task to get started.</p>
           <Link className="text-link" href="/tasks/new">
             Create your first task <span aria-hidden="true">→</span>
           </Link>

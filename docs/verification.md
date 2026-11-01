@@ -1,6 +1,6 @@
 # Verification
 
-Verified on October 31, 2026, on Windows with Node.js 26.12.0 and npm 11.20.0.
+Reverified on November 1, 2026, on Windows with Node.js 26.12.0 and npm 11.20.0.
 
 | Check                  | Result                                          |
 | ---------------------- | ----------------------------------------------- |
@@ -24,3 +24,5 @@ Tasks are held only in server memory. Restarts lose data, separate processes do 
 The infinite-scroll bonus is verified with 23 tasks across three pages, with no duplicate entries. Tests cover editing and deleting a later-page task, exact page boundaries, invalid limits/cursors, deletion of a cursor task, retry after a failed page request, and keyboard loading without IntersectionObserver. The first page remains server-rendered. No dependencies were added.
 
 Final visual review on November 1, 2026: production preview loaded ten tasks initially and thirteen after scrolling. Desktop and 375px mobile layouts were inspected. The production dependency audit still reported no vulnerabilities.
+
+The final requirement-by-requirement audit is in [final-audit.md](final-audit.md), including independently tested process isolation/restart loss and GitHub history/metadata caveats.
